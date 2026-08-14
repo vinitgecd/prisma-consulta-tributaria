@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   HelpCircle,
   ChevronDown,
+  Lock,
 } from 'lucide-react'
 import {
   ClientProfile,
@@ -25,8 +26,15 @@ import {
   DEFAULT_RESPONSE,
   REFUSAL_EXAMPLE,
 } from '@/data/demoConsultations'
+import { useAuth } from '@/context/AuthContext'
+import { useToast } from '@/hooks/use-toast'
+import { debitCredit } from '@/services/assinaturas'
+import { createConsulta } from '@/services/consultas'
 
 export default function Index() {
+  const { user, assinatura, refreshAssinatura } = useAuth()
+  const { toast } = useToast()
+
   // Client profile state
   const [profile, setProfile] = useState<ClientProfile>(DEFAULT_CLIENT_PROFILE)
 
@@ -37,24 +45,70 @@ export default function Index() {
   const [isLoading, setIsLoading] = useState<boolean>(false)
 
   // Trigger state for staggered animation reset
-  const [hasSearched, setHasSearched] = useState<boolean>(true)
   const [searchKey, setSearchKey] = useState<number>(0)
 
   const handleProfileChange = (field: keyof ClientProfile, value: string) => {
     setProfile((prev) => ({ ...prev, [field]: value }))
   }
 
-  const handleConsultar = (e?: React.FormEvent) => {
+  const handleConsultar = async (e?: React.FormEvent) => {
     if (e) e.preventDefault()
     if (!question.trim()) return
 
+    // Logged-in users must have an active subscription with credits
+    if (user) {
+      if (!assinatura || assinatura.status !== 'ativa') {
+        toast({
+          title: 'Sem assinatura ativa',
+          description:
+            'Você não possui uma assinatura ativa. Contrate um plano para continuar utilizando o Prisma Consulta Tributária.',
+        })
+        return
+      }
+      if (assinatura.creditos_restantes <= 0) {
+        toast({
+          title: 'Créditos esgotados',
+          description:
+            'Você não possui créditos disponíveis. Renove seu plano para continuar utilizando o Prisma Consulta Tributária.',
+        })
+        return
+      }
+    }
+
     setIsLoading(true)
-    // Simulate query computation delay
-    setTimeout(() => {
-      setIsLoading(false)
-      setHasSearched(true)
+    try {
+      // Logged-in: debit one credit and register the consulta
+      if (user && assinatura) {
+        const remaining = await debitCredit(assinatura.id)
+        if (remaining === null) {
+          toast({
+            title: 'Créditos esgotados',
+            description:
+              'Você não possui créditos disponíveis. Renove seu plano para continuar utilizando o Prisma Consulta Tributária.',
+          })
+          return
+        }
+        try {
+          await createConsulta({
+            profile,
+            pergunta: question,
+            resposta: DEFAULT_RESPONSE.respostaCurta,
+            fonteCitada: DEFAULT_RESPONSE.fonte,
+            creditosGastos: 1,
+          })
+        } catch {
+          // Non-blocking: consulta persistence failure shouldn't hide the answer
+        }
+        await refreshAssinatura()
+      }
+
+      // Simulate query computation delay (demo response generation)
+      await new Promise((resolve) => setTimeout(resolve, 1500))
+
       setSearchKey((prev) => prev + 1)
-    }, 1500)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -225,6 +279,32 @@ export default function Index() {
           </div>
 
           <form onSubmit={handleConsultar} className="space-y-3">
+            {/* Auth / credits status banner */}
+            {user ? (
+              <div className="flex items-center justify-between gap-3 text-xs bg-[#EEF4EE]/60 border border-[#4E7A54]/30 rounded-lg px-3.5 py-2.5">
+                <span className="text-[#3F6645] font-medium">
+                  Consulta registrada para {user.name}
+                </span>
+                {assinatura && (
+                  <span className="text-[#5A6B7A] font-medium">
+                    {assinatura.creditos_restantes} crédito
+                    {assinatura.creditos_restantes === 1 ? '' : 's'} restante
+                    {assinatura.creditos_restantes === 1 ? '' : 's'}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-xs bg-[#F5F7F6] border border-[#E5EAE8] rounded-lg px-3.5 py-2.5 text-[#5A6B7A]">
+                <Lock className="w-3.5 h-3.5 text-[#8A98A6]" />
+                <span>
+                  Modo demonstração —{' '}
+                  <a href="/login" className="text-[#4E7A54] font-semibold hover:underline">
+                    entre na sua conta
+                  </a>{' '}
+                  para registrar consultas e usar créditos.
+                </span>
+              </div>
+            )}
             <div className="relative">
               <textarea
                 value={question}
