@@ -2,10 +2,13 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import pb from '@/lib/pocketbase/client'
 import { getActiveAssinatura, type Assinatura } from '@/services/assinaturas'
 
+export type UserProfile = 'contador' | 'advogado' | 'administrador'
+
 export interface AuthUser {
   id: string
   email: string
   name: string
+  profile?: UserProfile
 }
 
 interface AuthContextValue {
@@ -13,7 +16,7 @@ interface AuthContextValue {
   assinatura: Assinatura | null
   loading: boolean
   login: (email: string, password: string) => Promise<void>
-  signup: (name: string, email: string, password: string) => Promise<void>
+  signup: (name: string, email: string, password: string, profile: UserProfile) => Promise<void>
   logout: () => void
   refreshAssinatura: () => Promise<void>
 }
@@ -21,11 +24,12 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
 function toAuthUser(record: unknown): AuthUser {
-  const r = record as { id: string; email: string; name?: string }
+  const r = record as { id: string; email: string; name?: string; profile?: string }
   return {
     id: r.id,
     email: r.email,
     name: r.name || r.email.split('@')[0],
+    profile: r.profile as UserProfile | undefined,
   }
 }
 
@@ -80,20 +84,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [refreshAssinatura],
   )
 
-  const signup = useCallback(async (name: string, email: string, password: string) => {
-    // Create the user
-    await pb.collection('users').create({
-      name,
-      email,
-      password,
-      passwordConfirm: password,
-    })
-    // Authenticate immediately
-    const authRecord = await pb.collection('users').authWithPassword(email, password)
-    setUser(toAuthUser(authRecord.record))
-    // No active subscription yet for a brand-new user
-    setAssinatura(null)
-  }, [])
+  const signup = useCallback(
+    async (name: string, email: string, password: string, profile: UserProfile) => {
+      // Create the user
+      await pb.collection('users').create({
+        name,
+        email,
+        password,
+        passwordConfirm: password,
+        profile,
+      })
+      // Authenticate immediately
+      const authRecord = await pb.collection('users').authWithPassword(email, password)
+      setUser(toAuthUser(authRecord.record))
+      // No active subscription yet for a brand-new user
+      setAssinatura(null)
+    },
+    [],
+  )
 
   const logout = useCallback(() => {
     pb.authStore.clear()

@@ -115,6 +115,13 @@
   }
 }
 
+@layer components {
+  /* Shared modal input styling (used by the Acervo management modals) */
+  .modal-input {
+    @apply w-full h-11 px-3.5 bg-[#F5F7F6] border border-[#E5EAE8] rounded-lg text-[15px] font-medium text-[#1A2B3C] placeholder-[#8A98A6] focus:outline-none focus:ring-2 focus:ring-[#4E7A54] focus:border-transparent focus:bg-white transition-all;
+  }
+}
+
 @layer utilities {
   /* KEEP ALL THE ANIMATIONS CLASSES THAT ARE USED BELOW */
   @keyframes accordion-down {

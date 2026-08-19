@@ -3,7 +3,7 @@
    - This component is used in the App.tsx file to wrap the main content of the app */
 
 import { Outlet, Link, useNavigate } from 'react-router-dom'
-import { Info, LogOut, User as UserIcon, LogIn, Coins } from 'lucide-react'
+import { Info, LogOut, User as UserIcon, LogIn, Coins, BookMarked } from 'lucide-react'
 import { PrismaLogo } from './PrismaLogo'
 import { useAuth } from '@/context/AuthContext'
 import { useState, useRef, useEffect } from 'react'
@@ -60,6 +60,15 @@ export default function Layout() {
                     <span>{assinatura.creditos_restantes} créditos</span>
                   </div>
                 )}
+                {user.profile === 'administrador' && (
+                  <Link
+                    to="/acervo"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[#4E7A54]/40 hover:border-[#4E7A54] hover:bg-[#4E7A54]/15 text-white text-xs sm:text-sm font-medium transition-all"
+                  >
+                    <BookMarked className="w-3.5 h-3.5 text-[#4E7A54]" />
+                    <span>Acervo</span>
+                  </Link>
+                )}
                 <div className="relative" ref={menuRef}>
                   <button
                     onClick={() => setMenuOpen((v) => !v)}
@@ -81,6 +90,16 @@ export default function Layout() {
                           </p>
                         )}
                       </div>
+                      {user.profile === 'administrador' && (
+                        <Link
+                          to="/acervo"
+                          onClick={() => setMenuOpen(false)}
+                          className="w-full flex items-center gap-2 px-4 py-2 text-sm text-[#1A2B3C] hover:bg-[#F5F7F6] transition-colors"
+                        >
+                          <BookMarked className="w-4 h-4 text-[#5A6B7A]" />
+                          Acervo de Normas
+                        </Link>
+                      )}
                       <button
                         onClick={handleLogout}
                         className="w-full flex items-center gap-2 px-4 py-2 text-sm text-[#1A2B3C] hover:bg-[#F5F7F6] transition-colors cursor-pointer"

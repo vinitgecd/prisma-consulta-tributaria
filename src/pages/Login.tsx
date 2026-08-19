@@ -1,6 +1,14 @@
 import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Loader2, Mail, Lock, User as UserIcon, ArrowLeft, ShieldCheck } from 'lucide-react'
+import {
+  Loader2,
+  Mail,
+  Lock,
+  User as UserIcon,
+  ArrowLeft,
+  ShieldCheck,
+  ChevronDown,
+} from 'lucide-react'
 import { useAuth } from '@/context/AuthContext'
 import { getErrorMessage } from '@/lib/pocketbase/errors'
 import { PrismaLogo } from '@/components/PrismaLogo'
@@ -14,6 +22,7 @@ export default function Login() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [profile, setProfile] = useState<'contador' | 'advogado' | 'administrador'>('contador')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -33,7 +42,7 @@ export default function Login() {
       if (mode === 'login') {
         await login(email.trim(), password)
       } else {
-        await signup(name.trim(), email.trim(), password)
+        await signup(name.trim(), email.trim(), password, profile)
       }
       navigate('/')
     } catch (err) {
@@ -88,24 +97,48 @@ export default function Login() {
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 {mode === 'signup' && (
-                  <div className="space-y-1.5">
-                    <label
-                      htmlFor="name"
-                      className="block text-[12px] font-semibold uppercase tracking-[0.06em] text-[#5A6B7A]"
-                    >
-                      Nome
-                    </label>
-                    <div className="relative">
-                      <UserIcon className="w-4 h-4 text-[#8A98A6] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                      <input
-                        id="name"
-                        type="text"
-                        autoComplete="name"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        placeholder="Seu nome"
-                        className="w-full h-11 pl-9 pr-3.5 bg-[#F5F7F6] border border-[#E5EAE8] rounded-lg text-[15px] font-medium text-[#1A2B3C] placeholder-[#8A98A6] focus:outline-none focus:ring-2 focus:ring-[#4E7A54] focus:border-transparent transition-all"
-                      />
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <label
+                        htmlFor="name"
+                        className="block text-[12px] font-semibold uppercase tracking-[0.06em] text-[#5A6B7A]"
+                      >
+                        Nome
+                      </label>
+                      <div className="relative">
+                        <UserIcon className="w-4 h-4 text-[#8A98A6] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          id="name"
+                          type="text"
+                          autoComplete="name"
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          placeholder="Seu nome"
+                          className="w-full h-11 pl-9 pr-3.5 bg-[#F5F7F6] border border-[#E5EAE8] rounded-lg text-[15px] font-medium text-[#1A2B3C] placeholder-[#8A98A6] focus:outline-none focus:ring-2 focus:ring-[#4E7A54] focus:border-transparent transition-all"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label
+                        htmlFor="profile"
+                        className="block text-[12px] font-semibold uppercase tracking-[0.06em] text-[#5A6B7A]"
+                      >
+                        Perfil
+                      </label>
+                      <div className="relative">
+                        <select
+                          id="profile"
+                          value={profile}
+                          onChange={(e) => setProfile(e.target.value as typeof profile)}
+                          className="w-full h-11 px-3.5 pr-9 bg-[#F5F7F6] border border-[#E5EAE8] rounded-lg text-[15px] font-medium text-[#1A2B3C] appearance-none focus:outline-none focus:ring-2 focus:ring-[#4E7A54] focus:border-transparent transition-all cursor-pointer"
+                        >
+                          <option value="contador">Contador</option>
+                          <option value="advogado">Advogado</option>
+                          <option value="administrador">Administrador</option>
+                        </select>
+                        <ChevronDown className="w-4 h-4 text-[#8A98A6] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      </div>
                     </div>
                   </div>
                 )}

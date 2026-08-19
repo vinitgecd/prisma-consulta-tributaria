@@ -6,6 +6,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import Index from './pages/Index'
 import Login from './pages/Login'
 import NotFound from './pages/NotFound'
+import Acervo from './pages/Acervo'
 import Layout from './components/Layout'
 import { AuthProvider } from '@/context/AuthContext'
 
@@ -21,6 +22,7 @@ const App = () => (
         <Routes>
           <Route element={<Layout />}>
             <Route path="/" element={<Index />} />
+            <Route path="/acervo" element={<Acervo />} />
             {/* ADD ALL CUSTOM ROUTES MUST BE ADDED HERE */}
           </Route>
           <Route path="/login" element={<Login />} />
