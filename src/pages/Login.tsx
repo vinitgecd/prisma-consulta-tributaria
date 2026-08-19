@@ -22,7 +22,7 @@ export default function Login() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [profile, setProfile] = useState<'contador' | 'advogado' | 'administrador'>('contador')
+  const [profile, setProfile] = useState<'contador' | 'advogado'>('contador')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -135,7 +135,6 @@ export default function Login() {
                         >
                           <option value="contador">Contador</option>
                           <option value="advogado">Advogado</option>
-                          <option value="administrador">Administrador</option>
                         </select>
                         <ChevronDown className="w-4 h-4 text-[#8A98A6] absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                       </div>
