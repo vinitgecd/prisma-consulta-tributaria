@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import {
+  ArrowLeft,
   BookMarked,
   Search,
   Plus,
@@ -295,6 +296,15 @@ export default function Acervo() {
 
   return (
     <div className="space-y-5">
+      {/* Top navigation back to home */}
+      <Link
+        to="/"
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-[#0B2A4A] hover:text-[#4E7A54] transition-colors"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        Voltar para a página principal
+      </Link>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
