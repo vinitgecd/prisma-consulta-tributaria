@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
   User,
   MessageSquare,
@@ -14,9 +14,15 @@ import {
   HelpCircle,
   ChevronDown,
   Lock,
+  Clock,
+  RotateCcw,
+  Inbox,
+  AlertCircle,
+  ArrowUpRight,
 } from 'lucide-react'
 import {
   ClientProfile,
+  ConsultationResponse,
   SEGMENTOS,
   REGIMES_TRIBUTARIOS,
   FAIXAS_FATURAMENTO,
@@ -29,11 +35,36 @@ import {
 import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/hooks/use-toast'
 import { debitCredit } from '@/services/assinaturas'
-import { createConsulta } from '@/services/consultas'
+import { createConsulta, type Consulta } from '@/services/consultas'
+import pb from '@/lib/pocketbase/client'
+
+function formatDateBR(dateString: string): string {
+  if (!dateString) return ''
+  try {
+    const d = new Date(dateString)
+    if (isNaN(d.getTime())) return dateString
+    const day = String(d.getDate()).padStart(2, '0')
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const year = d.getFullYear()
+    const hours = String(d.getHours()).padStart(2, '0')
+    const minutes = String(d.getMinutes()).padStart(2, '0')
+    return `${day}/${month}/${year} ${hours}:${minutes}`
+  } catch {
+    return dateString
+  }
+}
+
+function getFirstParagraph(text: string): string {
+  if (!text) return ''
+  const trimmed = text.trim()
+  const paragraphs = trimmed.split(/\n+/)
+  return paragraphs[0] || trimmed
+}
 
 export default function Index() {
   const { user, assinatura, refreshAssinatura } = useAuth()
   const { toast } = useToast()
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   // Client profile state
   const [profile, setProfile] = useState<ClientProfile>(DEFAULT_CLIENT_PROFILE)
@@ -44,11 +75,54 @@ export default function Index() {
   // Simulation loading state
   const [isLoading, setIsLoading] = useState<boolean>(false)
 
+  // Active response state:
+  // For visitors: initialized with DEFAULT_RESPONSE.
+  // For logged-in users: null until a consultation is run.
+  const [currentResponse, setCurrentResponse] = useState<ConsultationResponse | null>(() => {
+    return user ? null : DEFAULT_RESPONSE
+  })
+
   // Trigger state for staggered animation reset
   const [searchKey, setSearchKey] = useState<number>(0)
 
+  // History state for logged-in users
+  const [history, setHistory] = useState<Consulta[]>([])
+  const [historyStatus, setHistoryStatus] = useState<'loading' | 'error' | 'success'>('loading')
+
   const handleProfileChange = (field: keyof ClientProfile, value: string) => {
     setProfile((prev) => ({ ...prev, [field]: value }))
+  }
+
+  // Fetch consultation history for logged-in user
+  const loadHistory = useCallback(async (userId: string) => {
+    setHistoryStatus('loading')
+    try {
+      const result = await pb.collection('consultas').getList<Consulta>(1, 20, {
+        filter: `usuario = "${userId}"`,
+        sort: '-created',
+      })
+      setHistory(result.items)
+      setHistoryStatus('success')
+    } catch {
+      setHistoryStatus('error')
+    }
+  }, [])
+
+  useEffect(() => {
+    if (user?.id) {
+      loadHistory(user.id)
+    } else {
+      setHistory([])
+      // Reset to demo response when logged out
+      setCurrentResponse(DEFAULT_RESPONSE)
+    }
+  }, [user?.id, loadHistory])
+
+  const scrollToQuestionBox = () => {
+    if (textareaRef.current) {
+      textareaRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      textareaRef.current.focus()
+    }
   }
 
   const handleConsultar = async (e?: React.FormEvent) => {
@@ -77,6 +151,8 @@ export default function Index() {
 
     setIsLoading(true)
     try {
+      let createdRecord: Consulta | null = null
+
       // Logged-in: debit one credit and register the consulta
       if (user && assinatura) {
         const remaining = await debitCredit(assinatura.id)
@@ -89,7 +165,7 @@ export default function Index() {
           return
         }
         try {
-          await createConsulta({
+          createdRecord = await createConsulta({
             profile,
             pergunta: question,
             resposta: DEFAULT_RESPONSE.respostaCurta,
@@ -102,10 +178,38 @@ export default function Index() {
         await refreshAssinatura()
       }
 
-      // Simulate query computation delay (demo response generation)
+      // Simulate query computation delay
       await new Promise((resolve) => setTimeout(resolve, 1500))
 
+      // Update current displayed response
+      setCurrentResponse(DEFAULT_RESPONSE)
       setSearchKey((prev) => prev + 1)
+
+      // Prepend the new consultation to the history list immediately
+      if (user) {
+        if (createdRecord) {
+          setHistory((prev) => [createdRecord!, ...prev.slice(0, 19)])
+        } else {
+          // Fallback optimistic item if network failed on createConsulta
+          const optimisticConsulta: Consulta = {
+            id: `temp-${Date.now()}`,
+            usuario: user.id,
+            segmento: profile.segmento,
+            regime: profile.regimeTributario,
+            faixa_faturamento: profile.faixaFaturamento,
+            uf: profile.uf,
+            pergunta: question,
+            resposta: DEFAULT_RESPONSE.respostaCurta,
+            fonte_citada: DEFAULT_RESPONSE.fonte,
+            creditos_gastos: 1,
+            data_consulta: new Date().toISOString(),
+            created: new Date().toISOString(),
+            updated: new Date().toISOString(),
+          }
+          setHistory((prev) => [optimisticConsulta, ...prev.slice(0, 19)])
+        }
+        setHistoryStatus('success')
+      }
     } finally {
       setIsLoading(false)
     }
@@ -307,6 +411,7 @@ export default function Index() {
             )}
             <div className="relative">
               <textarea
+                ref={textareaRef}
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
                 placeholder="Descreva sua dúvida sobre a reforma tributária…"
@@ -361,94 +466,114 @@ export default function Index() {
               </div>
             </div>
 
-            <span className="inline-flex items-center gap-1.5 text-xs text-[#4E7A54] bg-[#EEF4EE] font-medium px-2.5 py-1 rounded-full border border-[#4E7A54]/20">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              Análise Concluída
-            </span>
+            {currentResponse && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-[#4E7A54] bg-[#EEF4EE] font-medium px-2.5 py-1 rounded-full border border-[#4E7A54]/20 animate-fade-in">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Análise Concluída
+              </span>
+            )}
           </div>
 
-          {/* 5 Response Blocks */}
-          <div key={searchKey} className="space-y-4">
-            {/* 1. Resposta Curta */}
-            <div
-              className="p-4 sm:p-5 rounded-xl bg-[#EEF4EE]/60 border border-[#4E7A54]/30 space-y-2 transition-all duration-300 animate-fade-in-up"
-              style={{ animationDelay: '0ms', animationFillMode: 'both' }}
-            >
-              <div className="flex items-center gap-2">
-                <MessageSquare className="w-4 h-4 text-[#4E7A54]" />
-                <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-[#4E7A54]">
-                  1. Resposta Curta
-                </span>
+          {/* Response Content or Welcome Empty State */}
+          {currentResponse ? (
+            <div key={searchKey} className="space-y-4">
+              {/* 1. Resposta Curta */}
+              <div
+                className="p-4 sm:p-5 rounded-xl bg-[#EEF4EE]/60 border border-[#4E7A54]/30 space-y-2 transition-all duration-300 animate-fade-in-up"
+                style={{ animationDelay: '0ms', animationFillMode: 'both' }}
+              >
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-[#4E7A54]" />
+                  <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-[#4E7A54]">
+                    1. Resposta Curta
+                  </span>
+                </div>
+                <p className="text-[15px] text-[#1A2B3C] font-semibold leading-relaxed pl-6">
+                  {currentResponse.respostaCurta}
+                </p>
               </div>
-              <p className="text-[15px] text-[#1A2B3C] font-semibold leading-relaxed pl-6">
-                {DEFAULT_RESPONSE.respostaCurta}
-              </p>
-            </div>
 
-            {/* 2. Fundamentação */}
-            <div
-              className="p-4 sm:p-5 rounded-xl bg-[#F5F7F6] border border-[#E5EAE8] space-y-2.5 transition-all duration-300 animate-fade-in-up"
-              style={{ animationDelay: '80ms', animationFillMode: 'both' }}
-            >
-              <div className="flex items-center gap-2">
-                <BookOpen className="w-4 h-4 text-[#0B2A4A]" />
-                <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-[#0B2A4A]">
-                  2. Fundamentação
-                </span>
+              {/* 2. Fundamentação */}
+              <div
+                className="p-4 sm:p-5 rounded-xl bg-[#F5F7F6] border border-[#E5EAE8] space-y-2.5 transition-all duration-300 animate-fade-in-up"
+                style={{ animationDelay: '80ms', animationFillMode: 'both' }}
+              >
+                <div className="flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-[#0B2A4A]" />
+                  <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-[#0B2A4A]">
+                    2. Fundamentação
+                  </span>
+                </div>
+                <blockquote className="border-l-4 border-[#0B2A4A] pl-4 py-1 italic text-[14px] text-[#1A2B3C] leading-relaxed bg-white/70 rounded-r-lg">
+                  {currentResponse.fundamentacao}
+                </blockquote>
               </div>
-              <blockquote className="border-l-4 border-[#0B2A4A] pl-4 py-1 italic text-[14px] text-[#1A2B3C] leading-relaxed bg-white/70 rounded-r-lg">
-                {DEFAULT_RESPONSE.fundamentacao}
-              </blockquote>
-            </div>
 
-            {/* 3. Fonte */}
-            <div
-              className="p-4 sm:p-5 rounded-xl bg-[#F5F7F6] border border-[#E5EAE8] space-y-2 transition-all duration-300 animate-fade-in-up"
-              style={{ animationDelay: '160ms', animationFillMode: 'both' }}
-            >
-              <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-[#0B2A4A]" />
-                <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-[#0B2A4A]">
-                  3. Fonte
-                </span>
+              {/* 3. Fonte */}
+              <div
+                className="p-4 sm:p-5 rounded-xl bg-[#F5F7F6] border border-[#E5EAE8] space-y-2 transition-all duration-300 animate-fade-in-up"
+                style={{ animationDelay: '160ms', animationFillMode: 'both' }}
+              >
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-[#0B2A4A]" />
+                  <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-[#0B2A4A]">
+                    3. Fonte
+                  </span>
+                </div>
+                <p className="text-[15px] text-[#1A2B3C] font-medium leading-relaxed pl-6">
+                  {currentResponse.fonte}
+                </p>
               </div>
-              <p className="text-[15px] text-[#1A2B3C] font-medium leading-relaxed pl-6">
-                {DEFAULT_RESPONSE.fonte}
-              </p>
-            </div>
 
-            {/* 4. Limite de Aplicação */}
-            <div
-              className="p-4 sm:p-5 rounded-xl bg-[#FFFBF3] border border-[#B7791F]/30 space-y-2 transition-all duration-300 animate-fade-in-up"
-              style={{ animationDelay: '240ms', animationFillMode: 'both' }}
-            >
-              <div className="flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-[#B7791F]" />
-                <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-[#B7791F]">
-                  4. Limite de Aplicação
-                </span>
+              {/* 4. Limite de Aplicação */}
+              <div
+                className="p-4 sm:p-5 rounded-xl bg-[#FFFBF3] border border-[#B7791F]/30 space-y-2 transition-all duration-300 animate-fade-in-up"
+                style={{ animationDelay: '240ms', animationFillMode: 'both' }}
+              >
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-[#B7791F]" />
+                  <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-[#B7791F]">
+                    4. Limite de Aplicação
+                  </span>
+                </div>
+                <p className="text-[15px] text-[#1A2B3C] font-medium leading-relaxed pl-6">
+                  {currentResponse.limiteAplicacao}
+                </p>
               </div>
-              <p className="text-[15px] text-[#1A2B3C] font-medium leading-relaxed pl-6">
-                {DEFAULT_RESPONSE.limiteAplicacao}
-              </p>
-            </div>
 
-            {/* 5. Disclaimer */}
-            <div
-              className="p-4 sm:p-5 rounded-xl bg-[#F5F7F6] border border-[#E5EAE8] space-y-2 transition-all duration-300 animate-fade-in-up"
-              style={{ animationDelay: '320ms', animationFillMode: 'both' }}
-            >
-              <div className="flex items-center gap-2">
-                <ShieldAlert className="w-4 h-4 text-[#5A6B7A]" />
-                <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-[#5A6B7A]">
-                  5. Termos &amp; Disclaimer
-                </span>
+              {/* 5. Disclaimer */}
+              <div
+                className="p-4 sm:p-5 rounded-xl bg-[#F5F7F6] border border-[#E5EAE8] space-y-2 transition-all duration-300 animate-fade-in-up"
+                style={{ animationDelay: '320ms', animationFillMode: 'both' }}
+              >
+                <div className="flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 text-[#5A6B7A]" />
+                  <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-[#5A6B7A]">
+                    5. Termos &amp; Disclaimer
+                  </span>
+                </div>
+                <p className="text-[13px] text-[#5A6B7A] leading-relaxed pl-6 italic">
+                  {currentResponse.disclaimer}
+                </p>
               </div>
-              <p className="text-[13px] text-[#5A6B7A] leading-relaxed pl-6 italic">
-                {DEFAULT_RESPONSE.disclaimer}
-              </p>
             </div>
-          </div>
+          ) : (
+            /* Welcome state for logged-in users with no consultation active */
+            <div className="py-12 px-4 text-center space-y-4 rounded-xl bg-[#F5F7F6]/60 border border-dashed border-[#E5EAE8] animate-fade-in">
+              <div className="mx-auto w-14 h-14 rounded-2xl bg-[#EEF4EE] flex items-center justify-center text-[#4E7A54] shadow-sm">
+                <Sparkles className="w-7 h-7" />
+              </div>
+              <div className="space-y-1.5 max-w-md mx-auto">
+                <h3 className="text-lg font-bold text-[#1A2B3C] tracking-tight">
+                  Prisma Consulta Tributária
+                </h3>
+                <p className="text-sm text-[#5A6B7A] leading-relaxed">
+                  Configure o perfil do cliente, faça uma pergunta e receba uma análise fundamentada
+                  no acervo de normas.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Separator Divider */}
           <hr className="border-[#E5EAE8] my-6" />
@@ -466,6 +591,140 @@ export default function Index() {
             </div>
           </div>
         </section>
+
+        {/* ========================================================= */}
+        {/* ÁREA 4: HISTÓRICO DE CONSULTAS (Apenas Usuários Logados)   */}
+        {/* ========================================================= */}
+        {user && (
+          <section className="bg-white rounded-[14px] p-5 sm:p-6 border border-[#E5EAE8] shadow-[0_1px_3px_rgba(11,42,74,0.08)] transition-all duration-200 hover:-translate-y-[2px] hover:shadow-[0_4px_12px_rgba(11,42,74,0.12)] hover:border-[#4E7A54]/40 space-y-5">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-[#E5EAE8]">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-lg bg-[#EEF4EE] text-[#4E7A54]">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-[17px] font-bold text-[#1A2B3C] tracking-tight">
+                    Histórico de Consultas
+                  </h2>
+                  <p className="text-xs text-[#5A6B7A]">
+                    Suas consultas recentes salvas no sistema
+                  </p>
+                </div>
+              </div>
+
+              {historyStatus === 'success' && history.length > 0 && (
+                <span className="text-xs font-semibold text-[#5A6B7A] bg-[#F5F7F6] px-2.5 py-1 rounded-full border border-[#E5EAE8]">
+                  {history.length} {history.length === 1 ? 'consulta' : 'consultas'}
+                </span>
+              )}
+            </div>
+
+            {/* UX State 1: LOADING (3 skeleton cards with pulse animation) */}
+            {historyStatus === 'loading' && (
+              <div className="space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <div
+                    key={i}
+                    className="p-4 rounded-xl border border-[#E5EAE8] bg-[#F5F7F6]/50 space-y-3 animate-pulse"
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="h-4 bg-[#E5EAE8] rounded-md w-3/5" />
+                      <div className="h-3 bg-[#E5EAE8] rounded-md w-24" />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="h-3 bg-[#E5EAE8] rounded-md w-full" />
+                      <div className="h-3 bg-[#E5EAE8] rounded-md w-4/5" />
+                      <div className="h-3 bg-[#E5EAE8] rounded-md w-2/3" />
+                    </div>
+                    <div className="h-3 bg-[#E5EAE8] rounded-md w-1/3" />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* UX State 2: EMPTY */}
+            {historyStatus === 'success' && history.length === 0 && (
+              <div className="py-10 px-4 text-center space-y-4 rounded-xl bg-[#F5F7F6]/60 border border-dashed border-[#E5EAE8] animate-fade-in">
+                <div className="mx-auto w-12 h-12 rounded-xl bg-white border border-[#E5EAE8] flex items-center justify-center text-[#8A98A6] shadow-sm">
+                  <Inbox className="w-6 h-6" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-[#1A2B3C]">
+                    Você ainda não fez nenhuma consulta.
+                  </p>
+                  <p className="text-xs text-[#5A6B7A]">
+                    Envie uma dúvida técnica acima para registrar sua primeira análise.
+                  </p>
+                </div>
+                <div>
+                  <button
+                    type="button"
+                    onClick={scrollToQuestionBox}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-[#4E7A54] hover:bg-[#3F6645] text-white text-xs font-semibold rounded-lg shadow-sm transition-all cursor-pointer"
+                  >
+                    <span>Fazer primeira consulta</span>
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* UX State 3: ERROR */}
+            {historyStatus === 'error' && (
+              <div className="py-8 px-4 text-center space-y-3 rounded-xl bg-red-50/50 border border-red-200 animate-fade-in">
+                <div className="mx-auto w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <p className="text-sm font-medium text-red-800">
+                  Não foi possível carregar seu histórico.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => user?.id && loadHistory(user.id)}
+                  className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-white border border-red-300 hover:bg-red-50 text-red-700 text-xs font-semibold rounded-lg transition-all shadow-sm cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Tentar novamente</span>
+                </button>
+              </div>
+            )}
+
+            {/* UX State 4: SUCCESS */}
+            {historyStatus === 'success' && history.length > 0 && (
+              <div className="space-y-3.5 animate-fade-in">
+                {history.map((item) => (
+                  <article
+                    key={item.id}
+                    className="p-4 sm:p-5 rounded-xl bg-[#F5F7F6]/60 border border-[#E5EAE8] hover:border-[#4E7A54]/40 hover:bg-[#F5F7F6] transition-all space-y-2.5"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-1.5">
+                      <h4 className="text-sm sm:text-[15px] font-bold text-[#1A2B3C] leading-snug">
+                        {item.pergunta}
+                      </h4>
+                      <time className="text-xs font-medium text-[#8A98A6] shrink-0">
+                        {formatDateBR(item.created || item.data_consulta)}
+                      </time>
+                    </div>
+
+                    {item.resposta && (
+                      <p className="text-xs sm:text-[13px] text-[#5A6B7A] leading-relaxed line-clamp-3">
+                        {getFirstParagraph(item.resposta)}
+                      </p>
+                    )}
+
+                    {item.fonte_citada && (
+                      <div className="flex items-center gap-1.5 pt-1 text-[11px] font-medium text-[#4E7A54]">
+                        <FileText className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">Fonte: {item.fonte_citada}</span>
+                      </div>
+                    )}
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
       </div>
     </div>
   )
