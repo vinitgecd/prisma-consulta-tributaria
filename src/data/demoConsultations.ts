@@ -6,11 +6,13 @@ export interface ClientProfile {
 }
 
 export interface ConsultationResponse {
-  respostaCurta: string
-  fundamentacao: string
-  fonte: string
-  limiteAplicacao: string
-  disclaimer: string
+  respostaCurta?: string
+  fundamentacao?: string
+  fonte?: string
+  limiteAplicacao?: string
+  disclaimer?: string
+  recusada?: boolean
+  mensagem?: string
 }
 
 export const SEGMENTOS = ['Saúde', 'Comércio', 'Serviços', 'Indústria', 'Outros']

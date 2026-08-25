@@ -168,9 +168,12 @@ export default function Index() {
           createdRecord = await createConsulta({
             profile,
             pergunta: question,
-            resposta: DEFAULT_RESPONSE.respostaCurta,
-            fonteCitada: DEFAULT_RESPONSE.fonte,
+            resposta: DEFAULT_RESPONSE.respostaCurta || '',
+            fonteCitada: DEFAULT_RESPONSE.fonte || '',
             creditosGastos: 1,
+          })
+          toast({
+            title: 'Consulta registrada.',
           })
         } catch {
           // Non-blocking: consulta persistence failure shouldn't hide the answer
@@ -182,7 +185,7 @@ export default function Index() {
       await new Promise((resolve) => setTimeout(resolve, 1500))
 
       // Update current displayed response
-      setCurrentResponse(DEFAULT_RESPONSE)
+      setCurrentResponse({ ...DEFAULT_RESPONSE, recusada: false })
       setSearchKey((prev) => prev + 1)
 
       // Prepend the new consultation to the history list immediately
@@ -199,8 +202,8 @@ export default function Index() {
             faixa_faturamento: profile.faixaFaturamento,
             uf: profile.uf,
             pergunta: question,
-            resposta: DEFAULT_RESPONSE.respostaCurta,
-            fonte_citada: DEFAULT_RESPONSE.fonte,
+            resposta: DEFAULT_RESPONSE.respostaCurta || '',
+            fonte_citada: DEFAULT_RESPONSE.fonte || '',
             creditos_gastos: 1,
             data_consulta: new Date().toISOString(),
             created: new Date().toISOString(),
@@ -385,18 +388,15 @@ export default function Index() {
           <form onSubmit={handleConsultar} className="space-y-3">
             {/* Auth / credits status banner */}
             {user ? (
-              <div className="flex items-center justify-between gap-3 text-xs bg-[#EEF4EE]/60 border border-[#4E7A54]/30 rounded-lg px-3.5 py-2.5">
-                <span className="text-[#3F6645] font-medium">
-                  Consulta registrada para {user.name}
-                </span>
-                {assinatura && (
+              assinatura ? (
+                <div className="flex items-center justify-end gap-3 text-xs bg-[#EEF4EE]/60 border border-[#4E7A54]/30 rounded-lg px-3.5 py-2.5">
                   <span className="text-[#5A6B7A] font-medium">
                     {assinatura.creditos_restantes} crédito
                     {assinatura.creditos_restantes === 1 ? '' : 's'} restante
                     {assinatura.creditos_restantes === 1 ? '' : 's'}
                   </span>
-                )}
-              </div>
+                </div>
+              ) : null
             ) : (
               <div className="flex items-center gap-2 text-xs bg-[#F5F7F6] border border-[#E5EAE8] rounded-lg px-3.5 py-2.5 text-[#5A6B7A]">
                 <Lock className="w-3.5 h-3.5 text-[#8A98A6]" />
@@ -476,87 +476,105 @@ export default function Index() {
 
           {/* Response Content or Welcome Empty State */}
           {currentResponse ? (
-            <div key={searchKey} className="space-y-4">
-              {/* 1. Resposta Curta */}
+            currentResponse.recusada ? (
+              /* Recusa educada inside response area */
               <div
-                className="p-4 sm:p-5 rounded-xl bg-[#EEF4EE]/60 border border-[#4E7A54]/30 space-y-2 transition-all duration-300 animate-fade-in-up"
-                style={{ animationDelay: '0ms', animationFillMode: 'both' }}
+                key={searchKey}
+                className="p-4 sm:p-5 rounded-xl bg-[#F5F7F6] border border-[#E5EAE8] space-y-3 transition-all duration-300 animate-fade-in-up"
               >
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="w-4 h-4 text-[#4E7A54]" />
-                  <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-[#4E7A54]">
-                    1. Resposta Curta
-                  </span>
-                </div>
-                <p className="text-[15px] text-[#1A2B3C] font-semibold leading-relaxed pl-6">
-                  {currentResponse.respostaCurta}
-                </p>
-              </div>
-
-              {/* 2. Fundamentação */}
-              <div
-                className="p-4 sm:p-5 rounded-xl bg-[#F5F7F6] border border-[#E5EAE8] space-y-2.5 transition-all duration-300 animate-fade-in-up"
-                style={{ animationDelay: '80ms', animationFillMode: 'both' }}
-              >
-                <div className="flex items-center gap-2">
-                  <BookOpen className="w-4 h-4 text-[#0B2A4A]" />
-                  <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-[#0B2A4A]">
-                    2. Fundamentação
-                  </span>
-                </div>
-                <blockquote className="border-l-4 border-[#0B2A4A] pl-4 py-1 italic text-[14px] text-[#1A2B3C] leading-relaxed bg-white/70 rounded-r-lg">
-                  {currentResponse.fundamentacao}
-                </blockquote>
-              </div>
-
-              {/* 3. Fonte */}
-              <div
-                className="p-4 sm:p-5 rounded-xl bg-[#F5F7F6] border border-[#E5EAE8] space-y-2 transition-all duration-300 animate-fade-in-up"
-                style={{ animationDelay: '160ms', animationFillMode: 'both' }}
-              >
-                <div className="flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-[#0B2A4A]" />
-                  <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-[#0B2A4A]">
-                    3. Fonte
-                  </span>
-                </div>
-                <p className="text-[15px] text-[#1A2B3C] font-medium leading-relaxed pl-6">
-                  {currentResponse.fonte}
-                </p>
-              </div>
-
-              {/* 4. Limite de Aplicação */}
-              <div
-                className="p-4 sm:p-5 rounded-xl bg-[#FFFBF3] border border-[#B7791F]/30 space-y-2 transition-all duration-300 animate-fade-in-up"
-                style={{ animationDelay: '240ms', animationFillMode: 'both' }}
-              >
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-[#B7791F]" />
-                  <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-[#B7791F]">
-                    4. Limite de Aplicação
-                  </span>
-                </div>
-                <p className="text-[15px] text-[#1A2B3C] font-medium leading-relaxed pl-6">
-                  {currentResponse.limiteAplicacao}
-                </p>
-              </div>
-
-              {/* 5. Disclaimer */}
-              <div
-                className="p-4 sm:p-5 rounded-xl bg-[#F5F7F6] border border-[#E5EAE8] space-y-2 transition-all duration-300 animate-fade-in-up"
-                style={{ animationDelay: '320ms', animationFillMode: 'both' }}
-              >
-                <div className="flex items-center gap-2">
-                  <ShieldAlert className="w-4 h-4 text-[#5A6B7A]" />
+                <div className="flex items-center gap-2 text-[#5A6B7A]">
+                  <HelpCircle className="w-4 h-4 text-[#8A98A6]" />
                   <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-[#5A6B7A]">
-                    5. Termos &amp; Disclaimer
+                    Recusa Educada (Pergunta sem resposta no acervo)
                   </span>
                 </div>
-                <p className="text-[13px] text-[#5A6B7A] leading-relaxed pl-6 italic">
-                  {currentResponse.disclaimer}
-                </p>
+                <div className="p-3.5 bg-white rounded-lg border border-[#E5EAE8] text-[14px] text-[#5A6B7A] leading-relaxed italic">
+                  &ldquo;{currentResponse.mensagem || REFUSAL_EXAMPLE}&rdquo;
+                </div>
               </div>
-            </div>
+            ) : (
+              <div key={searchKey} className="space-y-4">
+                {/* 1. Resposta Curta */}
+                <div
+                  className="p-4 sm:p-5 rounded-xl bg-[#EEF4EE]/60 border border-[#4E7A54]/30 space-y-2 transition-all duration-300 animate-fade-in-up"
+                  style={{ animationDelay: '0ms', animationFillMode: 'both' }}
+                >
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4 text-[#4E7A54]" />
+                    <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-[#4E7A54]">
+                      1. Resposta Curta
+                    </span>
+                  </div>
+                  <p className="text-[15px] text-[#1A2B3C] font-semibold leading-relaxed pl-6">
+                    {currentResponse.respostaCurta}
+                  </p>
+                </div>
+
+                {/* 2. Fundamentação */}
+                <div
+                  className="p-4 sm:p-5 rounded-xl bg-[#F5F7F6] border border-[#E5EAE8] space-y-2.5 transition-all duration-300 animate-fade-in-up"
+                  style={{ animationDelay: '80ms', animationFillMode: 'both' }}
+                >
+                  <div className="flex items-center gap-2">
+                    <BookOpen className="w-4 h-4 text-[#0B2A4A]" />
+                    <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-[#0B2A4A]">
+                      2. Fundamentação
+                    </span>
+                  </div>
+                  <blockquote className="border-l-4 border-[#0B2A4A] pl-4 py-1 italic text-[14px] text-[#1A2B3C] leading-relaxed bg-white/70 rounded-r-lg">
+                    {currentResponse.fundamentacao}
+                  </blockquote>
+                </div>
+
+                {/* 3. Fonte */}
+                <div
+                  className="p-4 sm:p-5 rounded-xl bg-[#F5F7F6] border border-[#E5EAE8] space-y-2 transition-all duration-300 animate-fade-in-up"
+                  style={{ animationDelay: '160ms', animationFillMode: 'both' }}
+                >
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-[#0B2A4A]" />
+                    <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-[#0B2A4A]">
+                      3. Fonte
+                    </span>
+                  </div>
+                  <p className="text-[15px] text-[#1A2B3C] font-medium leading-relaxed pl-6">
+                    {currentResponse.fonte}
+                  </p>
+                </div>
+
+                {/* 4. Limite de Aplicação */}
+                <div
+                  className="p-4 sm:p-5 rounded-xl bg-[#FFFBF3] border border-[#B7791F]/30 space-y-2 transition-all duration-300 animate-fade-in-up"
+                  style={{ animationDelay: '240ms', animationFillMode: 'both' }}
+                >
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-[#B7791F]" />
+                    <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-[#B7791F]">
+                      4. Limite de Aplicação
+                    </span>
+                  </div>
+                  <p className="text-[15px] text-[#1A2B3C] font-medium leading-relaxed pl-6">
+                    {currentResponse.limiteAplicacao}
+                  </p>
+                </div>
+
+                {/* 5. Disclaimer */}
+                <div
+                  className="p-4 sm:p-5 rounded-xl bg-[#F5F7F6] border border-[#E5EAE8] space-y-2 transition-all duration-300 animate-fade-in-up"
+                  style={{ animationDelay: '320ms', animationFillMode: 'both' }}
+                >
+                  <div className="flex items-center gap-2">
+                    <ShieldAlert className="w-4 h-4 text-[#5A6B7A]" />
+                    <span className="text-[12px] font-bold uppercase tracking-[0.06em] text-[#5A6B7A]">
+                      5. Termos &amp; Disclaimer
+                    </span>
+                  </div>
+                  <p className="text-[13px] text-[#5A6B7A] leading-relaxed pl-6 italic">
+                    {currentResponse.disclaimer}
+                  </p>
+                </div>
+              </div>
+            )
           ) : (
             /* Welcome state for logged-in users with no consultation active */
             <div className="py-12 px-4 text-center space-y-4 rounded-xl bg-[#F5F7F6]/60 border border-dashed border-[#E5EAE8] animate-fade-in">
@@ -575,21 +593,25 @@ export default function Index() {
             </div>
           )}
 
-          {/* Separator Divider */}
-          <hr className="border-[#E5EAE8] my-6" />
+          {/* Static Exemplo de Recusa Educada Card (rendered ONLY for non-logged-in visitors / demo mode) */}
+          {!user && (
+            <>
+              {/* Separator Divider */}
+              <hr className="border-[#E5EAE8] my-6" />
 
-          {/* Exemplo de Recusa Educada Card */}
-          <div className="p-4 sm:p-5 rounded-xl bg-[#F5F7F6]/80 border border-dashed border-[#8A98A6]/40 space-y-3">
-            <div className="flex items-center gap-2 text-[#5A6B7A]">
-              <HelpCircle className="w-4 h-4 text-[#8A98A6]" />
-              <h3 className="text-xs font-bold uppercase tracking-[0.06em] text-[#5A6B7A]">
-                Exemplo de recusa educada (pergunta sem resposta no acervo)
-              </h3>
-            </div>
-            <div className="p-3.5 bg-white rounded-lg border border-[#E5EAE8] text-[14px] text-[#5A6B7A] leading-relaxed italic">
-              &ldquo;{REFUSAL_EXAMPLE}&rdquo;
-            </div>
-          </div>
+              <div className="p-4 sm:p-5 rounded-xl bg-[#F5F7F6]/80 border border-dashed border-[#8A98A6]/40 space-y-3">
+                <div className="flex items-center gap-2 text-[#5A6B7A]">
+                  <HelpCircle className="w-4 h-4 text-[#8A98A6]" />
+                  <h3 className="text-xs font-bold uppercase tracking-[0.06em] text-[#5A6B7A]">
+                    Exemplo de recusa educada (pergunta sem resposta no acervo)
+                  </h3>
+                </div>
+                <div className="p-3.5 bg-white rounded-lg border border-[#E5EAE8] text-[14px] text-[#5A6B7A] leading-relaxed italic">
+                  &ldquo;{REFUSAL_EXAMPLE}&rdquo;
+                </div>
+              </div>
+            </>
+          )}
         </section>
 
         {/* ========================================================= */}
