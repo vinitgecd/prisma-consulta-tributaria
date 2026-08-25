@@ -17,12 +17,31 @@ export interface Consulta {
   updated: string
 }
 
+import type { ConsultationResponse } from '@/data/demoConsultations'
+
 export interface CreateConsultaInput {
   profile: ClientProfile
   pergunta: string
   resposta: string
   fonteCitada: string
   creditosGastos: number
+}
+
+/**
+ * Call real AI consultation hook on PocketBase.
+ */
+export async function consultarIA(
+  pergunta: string,
+  profile: ClientProfile,
+): Promise<ConsultationResponse> {
+  const response = await pb.send<ConsultationResponse>('/api/consultar', {
+    method: 'POST',
+    body: {
+      pergunta,
+      profile,
+    },
+  })
+  return response
 }
 
 /**

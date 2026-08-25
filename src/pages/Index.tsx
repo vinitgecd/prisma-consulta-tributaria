@@ -35,7 +35,7 @@ import {
 import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/hooks/use-toast'
 import { debitCredit } from '@/services/assinaturas'
-import { createConsulta, type Consulta } from '@/services/consultas'
+import { createConsulta, consultarIA, type Consulta } from '@/services/consultas'
 import pb from '@/lib/pocketbase/client'
 
 function formatDateBR(dateString: string): string {
@@ -136,17 +136,44 @@ export default function Index() {
     if (e) e.preventDefault()
     if (!question.trim()) return
 
-    // Logged-in users must have an active subscription with credits
-    if (user) {
-      if (!assinatura || assinatura.status !== 'ativa') {
-        toast({
-          title: 'Sem assinatura ativa',
-          description:
-            'Você não possui uma assinatura ativa. Contrate um plano para continuar utilizando o Prisma Consulta Tributária.',
-        })
-        return
+    // Branch d: Visitor (not logged in) - demo mode
+    if (!user) {
+      setIsLoading(true)
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 1500))
+        setCurrentResponse({ ...DEFAULT_RESPONSE, recusada: false })
+        setSearchKey((prev) => prev + 1)
+      } finally {
+        setIsLoading(false)
       }
-      if (assinatura.creditos_restantes <= 0) {
+      return
+    }
+
+    // Branch b: Logged in but no active subscription
+    if (!assinatura || assinatura.status !== 'ativa') {
+      toast({
+        title: 'Sem assinatura ativa',
+        description:
+          'Você não possui uma assinatura ativa. Contrate um plano para continuar utilizando o Prisma Consulta Tributária.',
+      })
+      return
+    }
+
+    // Branch c: Logged in but no credits
+    if (assinatura.creditos_restantes <= 0) {
+      toast({
+        title: 'Créditos esgotados',
+        description:
+          'Você não possui créditos disponíveis. Renove seu plano para continuar utilizando o Prisma Consulta Tributária.',
+      })
+      return
+    }
+
+    // Branch a: Logged in with active subscription and available credits
+    setIsLoading(true)
+    try {
+      const remaining = await debitCredit(assinatura.id)
+      if (remaining === null) {
         toast({
           title: 'Créditos esgotados',
           description:
@@ -154,72 +181,72 @@ export default function Index() {
         })
         return
       }
-    }
 
-    setIsLoading(true)
-    try {
-      let createdRecord: Consulta | null = null
-
-      // Logged-in: debit one credit and register the consulta
-      if (user && assinatura) {
-        const remaining = await debitCredit(assinatura.id)
-        if (remaining === null) {
-          toast({
-            title: 'Créditos esgotados',
-            description:
-              'Você não possui créditos disponíveis. Renove seu plano para continuar utilizando o Prisma Consulta Tributária.',
-          })
-          return
+      let aiResponse: ConsultationResponse
+      try {
+        aiResponse = await consultarIA(question, profile)
+        if (!aiResponse || typeof aiResponse !== 'object') {
+          throw new Error('Resposta vazia da IA')
         }
-        try {
-          createdRecord = await createConsulta({
-            profile,
-            pergunta: question,
-            resposta: DEFAULT_RESPONSE.respostaCurta || '',
-            fonteCitada: DEFAULT_RESPONSE.fonte || '',
-            creditosGastos: 1,
-          })
-          toast({
-            title: 'Consulta registrada.',
-          })
-        } catch {
-          // Non-blocking: consulta persistence failure shouldn't hide the answer
+      } catch (err: unknown) {
+        const errorMsg =
+          err && typeof err === 'object' && 'mensagem' in err && typeof err.mensagem === 'string'
+            ? err.mensagem
+            : 'Ainda não tenho uma resposta segura para essa pergunta no meu acervo de normas. Recomendo consultar um especialista ou aguardar a atualização do corpus.'
+        aiResponse = {
+          recusada: true,
+          mensagem: errorMsg,
         }
-        await refreshAssinatura()
       }
 
-      // Simulate query computation delay
-      await new Promise((resolve) => setTimeout(resolve, 1500))
-
-      // Update current displayed response
-      setCurrentResponse({ ...DEFAULT_RESPONSE, recusada: false })
+      // Render exactly what consultarIA returns
+      setCurrentResponse(aiResponse)
       setSearchKey((prev) => prev + 1)
 
-      // Prepend the new consultation to the history list immediately
-      if (user) {
-        if (createdRecord) {
-          setHistory((prev) => [createdRecord!, ...prev.slice(0, 19)])
-        } else {
-          // Fallback optimistic item if network failed on createConsulta
-          const optimisticConsulta: Consulta = {
-            id: `temp-${Date.now()}`,
-            usuario: user.id,
-            segmento: profile.segmento,
-            regime: profile.regimeTributario,
-            faixa_faturamento: profile.faixaFaturamento,
-            uf: profile.uf,
-            pergunta: question,
-            resposta: DEFAULT_RESPONSE.respostaCurta || '',
-            fonte_citada: DEFAULT_RESPONSE.fonte || '',
-            creditos_gastos: 1,
-            data_consulta: new Date().toISOString(),
-            created: new Date().toISOString(),
-            updated: new Date().toISOString(),
-          }
-          setHistory((prev) => [optimisticConsulta, ...prev.slice(0, 19)])
-        }
-        setHistoryStatus('success')
+      // Save consultation to history if it produced an answer or refusal
+      let createdRecord: Consulta | null = null
+      const respostaText = aiResponse.recusada
+        ? aiResponse.mensagem || ''
+        : aiResponse.respostaCurta || ''
+      const fonteText = aiResponse.recusada ? '' : aiResponse.fonte || ''
+
+      try {
+        createdRecord = await createConsulta({
+          profile,
+          pergunta: question,
+          resposta: respostaText,
+          fonteCitada: fonteText,
+          creditosGastos: 1,
+        })
+        toast({
+          title: 'Consulta registrada.',
+        })
+      } catch {
+        // Non-blocking
       }
+      await refreshAssinatura()
+
+      if (createdRecord) {
+        setHistory((prev) => [createdRecord!, ...prev.slice(0, 19)])
+      } else {
+        const optimisticConsulta: Consulta = {
+          id: `temp-${Date.now()}`,
+          usuario: user.id,
+          segmento: profile.segmento,
+          regime: profile.regimeTributario,
+          faixa_faturamento: profile.faixaFaturamento,
+          uf: profile.uf,
+          pergunta: question,
+          resposta: respostaText,
+          fonte_citada: fonteText,
+          creditos_gastos: 1,
+          data_consulta: new Date().toISOString(),
+          created: new Date().toISOString(),
+          updated: new Date().toISOString(),
+        }
+        setHistory((prev) => [optimisticConsulta, ...prev.slice(0, 19)])
+      }
+      setHistoryStatus('success')
     } finally {
       setIsLoading(false)
     }
@@ -496,7 +523,10 @@ export default function Index() {
                   </span>
                 </div>
                 <div className="p-3.5 bg-white rounded-lg border border-[#E5EAE8] text-[14px] text-[#5A6B7A] leading-relaxed italic">
-                  &ldquo;{currentResponse.mensagem || REFUSAL_EXAMPLE}&rdquo;
+                  &ldquo;
+                  {currentResponse.mensagem ||
+                    'Ainda não tenho uma resposta segura para essa pergunta no meu acervo de normas. Recomendo consultar um especialista ou aguardar a atualização do corpus.'}
+                  &rdquo;
                 </div>
               </div>
             ) : (
