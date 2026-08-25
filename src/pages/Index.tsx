@@ -69,8 +69,12 @@ export default function Index() {
   // Client profile state
   const [profile, setProfile] = useState<ClientProfile>(DEFAULT_CLIENT_PROFILE)
 
-  // Question box state
-  const [question, setQuestion] = useState<string>(DEFAULT_QUESTION)
+  // Question box state:
+  // For visitors: initialized with DEFAULT_QUESTION (demo mode).
+  // For logged-in users: starts empty.
+  const [question, setQuestion] = useState<string>(() => {
+    return user ? '' : DEFAULT_QUESTION
+  })
 
   // Simulation loading state
   const [isLoading, setIsLoading] = useState<boolean>(false)
@@ -111,9 +115,12 @@ export default function Index() {
   useEffect(() => {
     if (user?.id) {
       loadHistory(user.id)
+      setQuestion('')
+      setCurrentResponse(null)
     } else {
       setHistory([])
-      // Reset to demo response when logged out
+      // Reset to demo mode when logged out
+      setQuestion(DEFAULT_QUESTION)
       setCurrentResponse(DEFAULT_RESPONSE)
     }
   }, [user?.id, loadHistory])
